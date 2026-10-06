@@ -5,7 +5,6 @@ import { Command } from "commander";
 import {
   openVoyage,
   promptAndWait,
-  runtimes,
   type EventObserver,
   type RawEventObserver,
   type Runtime,
@@ -13,7 +12,9 @@ import {
 import { readModels, renderModels } from "./models.js";
 import { createProgressRenderer, renderOpened } from "./progress.js";
 import { registerUpgradeCommand } from "./upgrade.js";
+import { exitWhenFinished } from "./exit.js";
 import { registerMcpCommand } from "./mcp-command.js";
+import { runtimes } from "./runtimes.js";
 
 // Read the version from this package's own manifest so `--version` can never
 // drift from package.json. `../package.json` resolves to the package root in
@@ -247,6 +248,7 @@ program
     await dispose();
     process.off("SIGINT", onInterrupt);
     recorder?.end("disposed");
+    exitWhenFinished();
     if (run.kind === "rejected") {
       process.stderr.write(`prompt not accepted (${run.code}): ${run.reason}\n`);
       process.exitCode = 1;

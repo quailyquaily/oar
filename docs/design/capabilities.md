@@ -3,9 +3,10 @@
 A host picks the runtime at run time, from a user's choice or its own
 configuration, so its code cannot know which runtime it holds. Runtimes
 differ: cursor takes no environment for its tools, kimi resumes a session
-only in the directory it was created in, kimi and antigravity take no system
-prompt, three runtimes cannot steer. The design question is how a host learns
-what it may ask for, and what happens when it asks for more.
+only in the directory it was created in, cursor, kimi and antigravity take
+no system prompt, kimi and antigravity cannot steer. The design question is
+how a host learns what it may ask for, and what happens when it asks for
+more.
 
 **The position: a host never gets something other than it asked for, never
 parses prose to learn why, and never names a runtime to decide.** Three
@@ -33,8 +34,11 @@ host knows which runtime it called), never a session that quietly runs
 without it. A host may simply
 try and fall back on that error; it needs no list to do so.
 
-The error says which option, so a host can tell "not this runtime" from a
-failed login or a network error without reading the message. Where the
+The error is for an option the runtime cannot take at all (antigravity has no
+effort channel); a value it refuses, such as an effort level the model does
+not offer, is a plain error naming the value. The error says which option, so
+a host can tell "not this runtime" from a failed login or a network error
+without reading the message. Where the
 runtime's own word decides (kimi's directory comes from its `session/list`),
 the adapter throws the same error.
 
@@ -55,6 +59,35 @@ A declaration is added for a real pre-action need, not mirrored for every
 option. It is the same data the refusal reads: one shared check rejects a
 declared option before anything starts, so the declaration and the behavior
 cannot drift, and a test opens every declared refusal against the registry.
+
+## A runtime's own settings
+
+A setting only one runtime has is never a field of the shared contracts.
+Where it goes depends on how long it holds:
+
+- **For the host's lifetime** (where an SDK loads from, an executable path,
+  a data directory): an argument of that runtime's own constructor,
+  `createXxxRuntime(options)`, typed by that runtime alone. Constructors
+  share no shape. Only cursor has one today, because its SDK is a package
+  the host installs: `createCursorRuntime({ sdk: () => import("@cursor/sdk") })`.
+  A runtime gets a constructor when it first needs one; for a built-in
+  runtime, calling it without arguments gives the built-in one. The process environment
+  knobs `OAR_CODEX_BIN`, `OAR_CODEX_SANDBOX` and `OAR_PI_AGENT_DIR` are
+  settings of this kind; they move into constructors when a host first needs
+  them per instance.
+- **For one session** (a native feature switch for one agent): with the
+  session, keyed by the runtime it is for (`SessionOptions.native.codex`),
+  so a host still sends one set of options to every runtime. Not built until
+  a real need arrives; it becomes a shared `SessionOptions` field once a
+  second runtime has the same concept.
+
+A package the host installs is handed over, never looked up. Written in the
+host's own code, `import("@cursor/sdk")` fails the host's compile when the
+package is missing (`skipLibCheck` cannot hide it), checks the SDK's types
+against what OAR uses, and is visible to a bundler; a lookup inside OAR
+would fail only at run time. The built-in `runtimes` registry holds what OAR
+can build without the host, and a host adds the rest to a registry of its
+own, the way Ferry and rowrow already add their test runtimes.
 
 ## Finding it
 
@@ -98,3 +131,9 @@ in-process `bundled` installation for the kill case), never by runtime name.
   (#proj-rowrow, 2026-10-03).
 - kimi 2.1.1 resumed in another directory kept running in the old one until
   OAR refused it ([resume in another directory](../runtimes/resume-cwd.md)).
+- OAR 0.19.0 looked `@cursor/sdk` up itself: a host that forgot the package
+  learned it only at run time, and with `skipLibCheck` its compile could not
+  see it (#core, 2026-10-04). The clean install test now shows the host's
+  compile failing instead ([test](../../tests/clean-install.ts)). Kysely
+  takes the same line for database drivers: a dialect is handed the driver
+  (`new PostgresDialect({ pool })`).

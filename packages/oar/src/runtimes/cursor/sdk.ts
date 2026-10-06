@@ -1,15 +1,55 @@
 import { createRequire } from "node:module";
 import path from "node:path";
-import type { ModelListItem, ModelSelection, RunResult, SDKUserMessage, SteerAckOutcome } from "@cursor/sdk";
-
-export type { ModelListItem, ModelSelection, RunResult, SteerAckOutcome } from "@cursor/sdk";
 
 /*
  * The part of `@cursor/sdk` (1.0.35) the adapter uses, narrowed so tests can
  * stand in for it. The SDK runs Cursor's agent in this process: a local
  * agent keeps its conversation under `~/.cursor/projects/<cwd>/`, and its
  * credential is `CURSOR_API_KEY` or the key `Cursor.auth.login()` stored.
+ *
+ * The SDK is an optional peer dependency the host installs, so these types
+ * are written out here rather than imported: OAR's published declarations
+ * must not name a package a host may not have. The host hands the module
+ * over (`createCursorRuntime({ sdk: () => import("@cursor/sdk") })`), and
+ * its compile checks the real module against `CursorSdk`; in this repo the
+ * CLI and the sea trial do, so its typecheck catches drift.
  */
+
+export interface ModelParameterValue {
+  readonly id: string;
+  readonly value: string;
+}
+
+/** Also an argument the SDK takes, whose `params` it types as a mutable array. */
+export interface ModelSelection {
+  readonly id: string;
+  readonly params?: ModelParameterValue[];
+}
+
+export interface ModelListItem {
+  readonly id: string;
+  readonly displayName: string;
+  readonly description?: string;
+  readonly aliases?: readonly string[];
+  readonly parameters?: readonly {
+    readonly id: string;
+    readonly displayName?: string;
+    readonly values: readonly { readonly value: string; readonly displayName?: string }[];
+  }[];
+  readonly variants?: readonly {
+    readonly params: readonly ModelParameterValue[];
+    readonly displayName: string;
+    readonly description?: string;
+    readonly isDefault?: boolean;
+  }[];
+}
+
+export type SteerAckOutcome = "complete_delivered" | "revert_to_followup";
+
+interface CursorUserMessage {
+  readonly text: string;
+  readonly images?: { readonly data: string; readonly mimeType: string }[];
+}
 
 export type CursorDeltaListener = (args: { readonly update: unknown }) => void;
 
@@ -17,7 +57,7 @@ export type CursorDeltaListener = (args: { readonly update: unknown }) => void;
 export interface CursorRun {
   readonly id: string;
   /** Settles with the run's status once it ends (finished, error or cancelled). */
-  wait(): Promise<RunResult>;
+  wait(): Promise<unknown>;
   cancel(): Promise<void>;
   /** Present on runs that take mid-run input; settles once the agent took the text or handed it back. */
   steer?(text: string): Promise<SteerAckOutcome>;
@@ -27,7 +67,7 @@ export interface CursorAgent {
   readonly agentId: string;
   readonly model: ModelSelection | undefined;
   /** `local.force` takes the agent over from a run its store still holds as active. */
-  send(message: string | SDKUserMessage, options: { readonly onDelta: CursorDeltaListener; readonly local?: { readonly force: boolean } }): Promise<CursorRun>;
+  send(message: string | CursorUserMessage, options: { readonly onDelta: CursorDeltaListener; readonly local?: { readonly force: boolean } }): Promise<CursorRun>;
   close(): void;
 }
 
@@ -50,7 +90,7 @@ export interface CursorSdk {
   };
 }
 
-let loading: Promise<CursorSdk> | null = null;
+const SDK_PACKAGE = "@cursor/sdk";
 
 /**
  * The SDK's native companion (`@cursor/sdk-<platform>-<arch>`: ripgrep and
@@ -59,12 +99,14 @@ let loading: Promise<CursorSdk> | null = null;
  * does not hoist it (pnpm's, a bundled host): the agent then warns "tree-sitter
  * natives are unavailable" and searches without its own ripgrep. Resolved
  * from the SDK itself, the package is found wherever it was installed, and
- * the SDK's own variables point at it, unless the host set them.
+ * the SDK's own variables point at it, unless the host set them. The
+ * specifier is a variable so that a bundler does not try to resolve it; where
+ * OAR cannot resolve the SDK, the SDK looks for itself.
  */
 function nativePackageRoot(): string | null {
   try {
-    const fromSdk = createRequire(import.meta.resolve("@cursor/sdk"));
-    return path.dirname(fromSdk.resolve(`@cursor/sdk-${process.platform}-${process.arch}/package.json`));
+    const fromSdk = createRequire(import.meta.resolve(SDK_PACKAGE));
+    return path.dirname(fromSdk.resolve(`${SDK_PACKAGE}-${process.platform}-${process.arch}/package.json`));
   } catch {
     return null;
   }
@@ -79,23 +121,30 @@ function pointSdkAtNativePackage(): void {
   process.env.CURSOR_RIPGREP_PATH ??= path.join(root, "bin", process.platform === "win32" ? "rg.exe" : "rg");
 }
 
-async function importSdk(): Promise<CursorSdk> {
-  try {
-    pointSdkAtNativePackage();
-    return await import("@cursor/sdk");
-  } catch (error) {
-    loading = null;
-    throw error;
-  }
-}
-
 /**
- * The SDK is loaded on first use, not with OAR: it is a large bundle with a
- * native companion package per platform, and a host that never opens cursor
- * should not pay for it.
+ * The host's `sdk` loader, called once, on the first call that needs the
+ * SDK: it is a large bundle with a native companion package per platform,
+ * and a host that never opens cursor should not pay for it. A failed load is
+ * retried by the next call.
  */
-export async function loadCursorSdk(): Promise<CursorSdk> {
-  loading ??= importSdk();
-  const sdk = await loading;
-  return sdk;
+export function cursorSdkLoader(load: () => Promise<CursorSdk>): () => Promise<CursorSdk> {
+  let loading: Promise<CursorSdk> | null = null;
+  const attempt = async (): Promise<CursorSdk> => {
+    try {
+      // Yield first: a loader that throws synchronously would otherwise
+      // reset `loading` before `??=` stores this failed attempt in it.
+      await Promise.resolve();
+      pointSdkAtNativePackage();
+      const sdk = await load();
+      return sdk;
+    } catch (error) {
+      loading = null;
+      throw new Error("cursor could not load @cursor/sdk through the host's sdk loader", { cause: error });
+    }
+  };
+  return async () => {
+    loading ??= attempt();
+    const sdk = await loading;
+    return sdk;
+  };
 }

@@ -2,7 +2,6 @@ import { RuntimeRegistry } from "./registry.js";
 import { antigravityRuntime } from "./runtimes/antigravity/index.js";
 import { claudeRuntime } from "./runtimes/claude/index.js";
 import { codexRuntime } from "./runtimes/codex/index.js";
-import { cursorRuntime } from "./runtimes/cursor/index.js";
 import { grokRuntime } from "./runtimes/grok/index.js";
 import { kimiRuntime } from "./runtimes/kimi/index.js";
 import { piRuntime } from "./runtimes/pi/index.js";
@@ -122,27 +121,8 @@ export {
   recordLine,
 } from "./voyage.js";
 export type { VoyageHeader, VoyageRecorder } from "./voyage.js";
-export { coalesceText, controlActionsOf, eventsOf, eventsReader } from "./observe/events.js";
-export type { KnownControl } from "./observe/events.js";
-export {
-  initialStatus,
-  reduceStatus,
-  stallOf,
-  statusOf,
-} from "./observe/agent-status.js";
-export type { AgentStatus, RunningPhase } from "./observe/agent-status.js";
-export { observeStalls } from "./observe/stall-observer.js";
-export type { StallInfo } from "./observe/stall-observer.js";
-export { observeAgent, simpleStateOf } from "./observe/observe-agent.js";
-export { classifyTool, toolActionLabel } from "./observe/tool-activity.js";
-export { toolResultText } from "./observe/tool-output.js";
-export type { ToolAction, ToolActionKind } from "./observe/tool-activity.js";
-export type { AgentObserver, AgentView, ObserveAgentOptions } from "./observe/observe-agent.js";
-export { applyTaskEvent, initialTasks, reduceTasks, tasksOf } from "./observe/tasks.js";
-export type { TaskEventOrigin, TaskMap, TaskView } from "./observe/tasks.js";
-export { awaitIdle, awaitTurnEnd, promptAndWait, turnEndAfter } from "./observe/turns.js";
-export type { PromptRun, PromptRunOptions } from "./observe/turns.js";
-export { contextUsageOf, effortOf, modelOf, usageOf } from "./observe/usage.js";
+// Everything the browser-safe observe subpath exports, so the root is the full surface.
+export * from "./observe/index.js";
 export { claudeRuntime } from "./runtimes/claude/index.js";
 export { claudeListModels, projectClaudeModels } from "./runtimes/claude/list-models.js";
 export { claudeSession } from "./runtimes/claude/session.js";
@@ -159,9 +139,9 @@ export { antigravityRuntime } from "./runtimes/antigravity/index.js";
 export { antigravitySession } from "./runtimes/antigravity/session.js";
 export { antigravityInstallation } from "./runtimes/antigravity/installation.js";
 export { antigravityListModels, projectAntigravityModels } from "./runtimes/antigravity/list-models.js";
-export { cursorRuntime } from "./runtimes/cursor/index.js";
-export { cursorListModels, projectCursorModels } from "./runtimes/cursor/list-models.js";
-export { cursorSession } from "./runtimes/cursor/session.js";
+export { createCursorRuntime, projectCursorModels } from "./runtimes/cursor/index.js";
+export type { CursorRuntime, CursorRuntimeOptions } from "./runtimes/cursor/index.js";
+export type { CursorSdk } from "./runtimes/cursor/sdk.js";
 export { cursorInstallation } from "./runtimes/cursor/installation.js";
 export { grokRuntime } from "./runtimes/grok/index.js";
 export { grokListModels, projectGrokModels } from "./runtimes/grok/list-models.js";
@@ -176,11 +156,16 @@ export { piListModels, projectPiModels } from "./runtimes/pi/list-models.js";
 export { piSession } from "./runtimes/pi/session.js";
 export { piInstallation } from "./runtimes/pi/installation.js";
 
+/**
+ * The runtimes OAR builds without the host's help. Cursor is not one: its
+ * SDK is the host's to install, and a host that wants it adds
+ * `createCursorRuntime({ sdk: () => import("@cursor/sdk") })` to a registry
+ * of its own (`createRuntimeRegistry([...runtimes.list(), cursor])`).
+ */
 export const runtimes = new RuntimeRegistry([
   antigravityRuntime,
   claudeRuntime,
   codexRuntime,
-  cursorRuntime,
   grokRuntime,
   kimiRuntime,
   piRuntime,
@@ -189,5 +174,3 @@ export const runtimes = new RuntimeRegistry([
 export { runtimeBrands, runtimeBrandIcon } from "./brands.js";
 export type { RuntimeBrand } from "./brands.js";
 
-export { initialConversation, reduceConversation, conversationOf, observeConversation } from "./observe/conversation.js";
-export type { ConversationState, ConversationInput, ConversationUpdate, InputAttempt } from "./observe/conversation.js";
